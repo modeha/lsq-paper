@@ -1288,12 +1288,13 @@ Finally, the generalization of our approach to nonlinear least-squares
 problems with linear constraints is the subject of current investigation.
 \subsection{Numerical Aspects}
 
-We consider (\ref{eq:lsq-reg}) the regularization of \eqref{eq:lsq} proposed by
+We consider problem (\ref{eq:l1reg}) which can be reformulated as convex quadratic programs, and then solved by an interior-point method for example the regularization of \eqref{eq:lsq} proposed by
 \cite{friedlander-orban-2012}. Our method is implemented in the Python
-language as part of the \textsf{NLPy} library \citep{orban-2012}. We illustrate the performance of our approach against PDCO---see
-\http{www.stanford.edu/group/SOL/software/pdco.html} and $\ell_1-\ell_s$  on sparse single recovery problems generated randomly following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}. 
-The regularization parameter  was taken as $\delta=0.0001$ in ~\ref{eq:l1reg}.
+language as part of the \textsf{NLPy} library \citep{orban-2012}. We illustrate the performance of our approach against PDCO and $\ell_1-\ell_s$  on sparse single recovery problems generated randomly following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}. 
+The parameters that we choose in (\ref{eq:l1reg}) are different. For $A$ we apply the Pseudorandom Number Generator PRNG with $m=2^t$ and $n=2^{t+2}$ and the other kind of choosing parameter $A$ is the Discrete Cosine Transform DCT problem with $m=2^t$ and $n=2^{t+2}$. We take the parameter $d$ as random vector. The regularization parameter  was taken as $\lambda =1e-4$ in (\ref{eq:l1reg}).
 All large-scale  problems,  scaled form  achieves significantly better performance in terms of   number of iterations, cost, KKT residual, run time, and number of iteration in lsmr   while applying LSMR to the Newton system in LSQ and PDCO. We consider  PCG iteration for $\ell_1-\ell_s$.
+
+
 
 
 \include{SubFiles/NumericalResults}
