@@ -1294,9 +1294,20 @@ language as part of the \textsf{NLPy} library \citep{orban-2012}. We illustrate 
 The parameters that we choose in (\ref{eq:l1reg}) are different. For $A$ we apply the Pseudorandom Number Generator PRNG with $m=2^t$ and $n=2^{t+2}$ and the other kind of choosing parameter $A$ is the Discrete Cosine Transform DCT problem with $m=2^t$ and $n=2^{t+2}$. We take the parameter $d$ as random vector. The regularization parameter  was taken as $\lambda =1e-4$ in (\ref{eq:l1reg}).
 All large-scale  problems,  scaled form  achieves significantly better performance in terms of   number of iterations, cost, KKT residual, run time, and number of iteration in lsmr   while applying LSMR to the Newton system in LSQ and PDCO. We consider  PCG iteration for $\ell_1-\ell_s$.
 
-
-
-
+ \section{Generation of Test Problems}
+We generate  data for the following least-squares problem
+\begin{equation}
+\label{eq:first-class}
+\underset{x} {\text{minimize}}       \quad     \half\|Ax-b\|^2 
+\end{equation}
+where:%\refp{eq:first-class} can be easily converted  to  (\ref{eq:lsqt}).\\
+\begin{equation}
+\label{eq:first}
+\begin{aligned}
+&A= \text{the Pseudorandom Number Generator PRNG with $m=2^t$ and $n=2^{t+2}$}\\ 
+&d=(d_j),\quad q_{j}\in(-1,1) \text{ randomly chosen}, j=1,\cdots,n.\\
+  \end{aligned}
+\end{equation}
 \include{SubFiles/NumericalResults}
 \include{SubFiles/Conclusion}
 
