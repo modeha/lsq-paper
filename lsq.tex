@@ -1,0 +1,1304 @@
+\documentclass{amsart}
+
+\usepackage{defs}
+\usepackage{draftwatermark}
+\SetWatermarkScale{8}
+\usepackage{autonum} % Only number referenced eqn's
+
+% For the Cahier du GERAD.
+%\renewcommand{\year}{2020}     % If you don't want the current year.
+\newcommand{\cahiernumber}{00}  % Insert your Cahier du GERAD number.
+
+\begin{document}
+
+\title[Regularized Constrained Least Squares]{%
+  A Regularized Interior-Point Method for Constrained Linear Least Squares
+}
+
+%    author one information
+\author[M. Dehghani]{Mohsen Dehghani}
+\address{%
+  GERAD, Montr\'eal, Canada
+}
+\email{\mailto{mohsen.dehghani@gerad.ca}}
+\thanks{}
+
+%    author two information
+\author[D. Orban]{Dominique Orban}
+\address{%
+  GERAD and
+  Mathematics and Industrial Engineering Department \\
+  \'Ecole Polytechnique, Montr\'eal, Canada
+}
+\urladdr{\http{www.gerad.ca/~orban}}
+\email{\mailto{dominique.orban@gerad.ca}}
+\thanks{Research partially supported by NSERC Discovery Grant 299010-04}
+
+\subjclass[2010]{90C06, 90C20, 90C30, 90C51, 90C53, 90C55, 65F10, 65F50}
+
+\keywords{%
+  linear least squares, linear constraints, symmetric quasi-definite
+  system, interior-point method, primal-dual regularization, proximal point,
+  augmented Lagrangian}
+
+\date{\today}
+
+\begin{abstract}
+  We propose an infeasible interior-point algorithm for constrained linear
+  least-squares problems based on the primal-dual regularization of convex
+  programs of \cite{friedlander-orban-2012}. At each iteration, the sparse
+  LDL${}^{\mathrm{T}}$ factorization of a symmetric quasi-definite matrix is
+  computed. This  matrix is shown to be uniformly bounded and
+  nonsingular. We establish conditions under which a solution of the original
+  problem is recovered. Regularization allows us to dispense with the
+  assumption that the active gradients are linearly independent. Although the
+  implementation described here is factorization based, it paves the way to a
+  matrix-free implementation in which a regularized unconstrained linear
+  least-squares problem is solved at each iteration. We report computational
+  experience and illustrate the potential advantages of our approach.
+\end{abstract}
+
+\pagestyle{myheadings}
+
+\maketitle
+
+%\tableofcontents
+%\listoftodos\relax   % Must appear after toc.
+
+\section{Introduction}
+
+We are concerned with the constrained linear least-squares problem in standard
+form:
+\begin{equation}
+  \label{eq:lsq}
+  \minimize{x \in \R^n} \ c^T x + \half \|Ax - d\|^2 \quad
+  \st \ Bx = b, \ x \geq 0,
+\end{equation}
+where $c \in \R^n$, $A \in \R^{p \times n}$, $d \in \R^p$, $B \in \R^{m \times
+n}$, $b \in \R^m$ and inequalities are understood componentwise. It is
+typically assumed that $p > n$ and $m < n$ but the approach proposed in this
+paper allows us to do away with these restrictions. If $A = 0$, \eqref{eq:lsq}
+reduces to the linear programming problem in standard form. In all cases,
+\eqref{eq:lsq} is a convex quadratic program. Numerous applications give rise
+to \eqref{eq:lsq}, including signal decomposition by basis pursuit
+\citep{chen-donoho-saunders-1998}, $\ell_1$-regularized linear least squares
+\citep{kim-koh-lustig-boyd-gorinevsky-2007}, compressed sensing
+\citep{donoho-2006},  and machine learning \citep{koh-kim-boyd-2007}.
+
+An interior-point method applied directly to \eqref{eq:lsq} might suffer
+several difficulties. Firstly, the matrix $A^T \! A$, which may be rather
+dense and ill conditioned, will appear explicitly in the Newton step
+computation. Secondly, numerical instabilities will arise if the constraint
+matrix $B$ does not have full row rank. We remove the first difficulty in two
+different ways that lead to two slightly different implementations. The second
+difficulty disappears if we consider the following regularization of
+\eqref{eq:lsq} proposed by \cite{friedlander-orban-2012}:
+\begin{equation}
+  \begin{aligned}
+  \label{eq:lsq-reg}
+    \minimize{x \in \R^n, w \in \R^m} \quad &
+                              c^T x + \half \|Ax - d\|^2 +
+                              \half \rho \|x - x_k\|^2 +
+                              \half \delta \|w + y_k\|^2 \\
+    \st \quad & B x + \delta w = b, \ x \geq 0,
+  \end{aligned}
+\end{equation}
+where $\rho > 0$ and $\delta > 0$ are regularization parameters, $x_k$ and
+$y_k$ are the current approximations of the optimal primal variables and
+Lagrange multipliers, respectively, and $w$ are auxiliary variables playing
+the role of a constraint residual.
+
+In this paper, we specialize the interior-point framework of
+\cite{friedlander-orban-2012} and apply it to \eqref{eq:lsq-reg} with
+ultimately constant regularization parameters. At each iteration, a step is
+computed by solving a large and sparse symmetric quasi-definite linear system
+\citep{vanderbei-1995}. Contrary to most interior-point implementations,
+partial block elimination is not applied to this system to reduce it to the
+so-called \textit{augmented system} form or to the \textit{normal equations}.
+Instead, a similarity transformation is applied that guarantees that the system
+remains uniformly bounded and nonsingular throughout the iterations and in the
+limit,  provided strict complementarity is satisfied at a solution. We establish
+global convergence under weak assumptions. In particular, no assumption on the
+rank of $B$ or $A$. A distinctive feature of the regularization
+\eqref{eq:lsq-reg} is that it allows to be recovered a solution of \eqref{eq:lsq} in
+many situations,  not a solution of a perturbed problem. In addition,
+\eqref{eq:lsq-reg} is never solved to optimality for fixed values of $\rho$,
+$\delta$, $x_k$ and $y_k$. Instead, it is used to compute a single Newton step
+before attention turns to the next regularized subproblem.
+
+In \eqref{eq:lsq-reg}, the \textit{primal} regularization term $\half
+\rho \|x - x_k\|^2$ serves the dual purpose of regularizing $A$ whenever it
+is rank deficient and simplifying the implementation of the interior-point
+method in the presence of free variables. The \textit{dual} regularization term
+$\half \delta \|w + y_k\|^2$ regularizes $B$ whenever it is rank--deficient.
+
+The implementation proposed below relies on a sparse $LDL^T$ factorization
+of the symmetric quasi-definite  matrix. This factorization may be
+obtained at lower cost than the symmetric indefinite factorization, such as
+that of \cite{duff-2004}, and typically yields sparser factors. Its stability
+on symmetric quasi-definite systems has been analyzed by
+\cite{gill-saunders-shinnerl-1996}.
+
+Many applications only provide $A$ and $B$ in the form of linear operators
+instead of explicit matrices. Iterative methods specialized to symmetric
+quasi-definite systems have been  proposed recently by \cite{arioli-orban-2012}.
+Our algorithm paves the way to a matrix-free implementation using such iterative
+methods. This yields an elegant framework in which an unconstrained
+regularized linear least-squares problem must be solved at each iteration.
+
+Our analysis and implementation differ from those of
+\cite{friedlander-orban-2012} in several respects. First, the
+linear systems used in the definition of the Newton steps are larger, sparser
+and tailored to the special structure of \eqref{eq:lsq}. If strict
+complementarity holds at a solution, they also have uniformly bounded condition
+number. Second, our approach illustrates how to apply the primal-dual
+regularization of \cite{friedlander-orban-2012} selectively, leaving some
+variables and some constraints untouched. This has the benefit of exploiting
+the structure of the problem at hand.
+
+\subsection{Related Research}
+
+Most of the literature concentrates on the box-constrained variant of
+\eqref{eq:lsq}, i.e., with no linear equality constraints.
+\cite{portugal-judice-vicente-1994} compare infeasible active-set-type methods
+with interior-point algorithms and conclude that it is beneficial to use the
+normal equations formulation of the step-finding subproblem in the
+interior-point method. \cite{bellavia-macconi-morini-2006} propose an inexact
+Newton scheme under the assumption that $A$ has full rank but specifically
+target problems failing to satisfy strict complementarity at the solution.
+\cite{bellavia-gondzio-morini-2008} regularize the linear systems arising in
+the method of \cite{bellavia-macconi-morini-2006} with the aim of decreasing
+their condition number. The resulting linear systems are subsequently partially
+eliminated, preconditioned and solved with an iterative method.
+\cite{bellavia-gondzio-morini-2011} propose and compare an interior-point
+method and a method derived from that of \cite{barzilai-borwein-1988}.
+
+Active-set methods for the box-constrained problems have also been actively
+researched. Among others, \cite{bierlaire-toint-tuyttens-1991} describe three
+methods for reasonably well-conditioned problems, two of which are inspired by
+trust-region methods. \cite{friedlander-2007} implements a dual-metric method
+in which search directions are linear combinations of the Newton direction and
+a scaled gradient direction.
+
+Finally, background and pointers to more literature may be found in the seminal
+books of \cite{lawson-hanson-1995} and \cite{bjorck-1996}.
+
+
+\subsection{Notation}
+
+The notation $X$ and $Z$ is used to denote the diagonal matrices $\diag(x)$ and
+$\diag(z)$. The vector $e$ denotes the vector of all ones of appropriate
+dimension. The notation $\|\cdot\|$ denotes the Euclidian norm throughout. The
+$i$-th component of a vector $x$ is denoted $[x]_i$ while the value of $x$
+at the $k$-th iteration of a process is denoted $x_k$. For a given
+positive definite matrix $M$, the $M$-norm is defined as $\|x\|_M^2 = x^T M x$.
+The notation $\blkdiag(A_1, \ldots, A_k)$ denotes a block-diagonal matrix
+having the blocks $A_1$ through $A_k$ consecutively on the diagonal. Whenever
+a block $A_j$ is an identity block, its size is dictated by the context. For
+two related sequences $\{\alpha_k\}$ and $\{\beta_k\}$ of positive numbers, we
+write $\alpha_k = O(\beta_k)$ if there exists a constant $C > 0$ such that
+$\alpha_k \leq C \beta_k$ for all sufficiently large $k$. We write $\alpha_k =
+\Theta(\beta_k)$ if $\alpha_k = O(\beta_k)$ and $\beta_k = O(\alpha_k)$.
+
+\section{Background and Preliminaries}
+
+As a convex quadratic program, the dual of \eqref{eq:lsq} may be written as the
+constrained linear least-squares problem
+\begin{equation}
+  \label{eq:lsq-dual}
+  \begin{aligned}
+    \maximize{x,y,z} \quad &
+      b^T y - (A^T d)^T x - \half \|Ax - d\|^2 \\
+    \st \quad & B^T y + z - A^T \! A x = c - A^T d, \ z \geq 0,
+  \end{aligned}
+\end{equation}
+where $y \in \R^m$ and $z \in \R^n$ are the vectors of Lagrange multipliers
+associated with the equality constraints and bounds of \eqref{eq:lsq},
+respectively.
+
+\cite{friedlander-orban-2012} justify the regularization \eqref{eq:lsq-reg} of
+\eqref{eq:lsq} as an application of the proximal method of multipliers of
+\cite{rockafellar-1976}. It consists of the addition of a proximal-point term
+$\half \rho \|x - x_k\|^2$,  which we will refer to as a \textit{primal
+regularization} term, and of augmented Lagrangian terms consisting of the
+objective term $\half \delta \|w + y_k\|^2$ and the constraint
+residual term $\delta w$,   which we will collectively refer to as a \textit{dual
+regularization} term. The regularized problem \eqref{eq:lsq-reg} is still a
+convex quadratic program and its dual may be written as the regularized
+constrained linear least-squares problem
+\begin{equation}
+  \label{eq:lsq-reg-dual}
+  \begin{aligned}
+    \maximize{x, s, y, z} \quad &
+    b^T y - (A^T d)^T x - \half \|Ax - d\|^2 -
+    \half \delta \|y - y_k\|^2 - \half \rho \|s + x_k\|^2 \\
+    \st \quad & B^T y + z - A^T \! A x - \rho s = c - A^T d, \ z \geq 0,
+  \end{aligned}
+\end{equation}
+where $s = x - x_k$ are auxiliary variables playing the same role as $w$ in
+\eqref{eq:lsq-reg}. The strength of this regularization approach is that
+\eqref{eq:lsq-reg-dual} coincides with the primal-dual regularization of
+\eqref{eq:lsq-dual}.
+
+For convenience, we let $u := (x, s, w, y, z)$ and we define the function
+\begin{equation}
+  \label{eq:def-F}
+  F_k(u; \rho, \delta, \tau) :=
+  \begin{bmatrix}
+    c - A^T d - B^T y - z + A^T \! A x + \rho s \\
+    \rho x - \rho (s + x_k) \\
+    \delta y - \delta (w + y_k) \\
+    Bx + \delta w - b \\
+    X z - \tau e
+  \end{bmatrix},
+\end{equation}
+where $\tau \geq 0$ is a parameter. Using this notation, the common necessary
+and sufficient optimality conditions of \eqref{eq:lsq-reg} and
+\eqref{eq:lsq-reg-dual} may be written compactly as
+\[
+  F_k(u; \rho, \delta, 0) = 0,
+  \qquad
+  (x, z) \geq 0.
+\]
+Note also that additionally setting  $\rho = \delta = 0$ recovers the optimality
+conditions of the original primal-dual pair \eqref{eq:lsq} and
+\eqref{eq:lsq-dual}.
+
+An interior-point method applied to the primal-dual pair \eqref{eq:lsq-reg} and
+\eqref{eq:lsq-reg-dual} iteratively seeks approximate solutions to the
+nonlinear system
+\[
+  F_k(u; \rho, \delta, \tau_k) = 0, \quad (x,z) > 0,
+\]
+for a sequence of positive parameters $\{\tau_k\} \downarrow 0$. For each
+fixed value of $\tau_k$, a Newton step $\Delta u$ is computed from the current
+approximation $u_k$ as the solution of the linear system
+\[
+  \nabla_u F_k(u_k; \rho, \delta, \tau_k) \Delta u =
+  -F_k(u_k; \rho, \delta, \tau_k),
+\]
+where the Jacobian is given by
+\[
+  \nabla_u F_k(u_k; \rho, \delta, \tau_k) =
+  \begin{bmatrix}
+    A^T \! A  & \phantom{-}\rho I   & & -B^T & -I \\
+    \rho I & -\rho I & &      & \\
+    & & -\delta I & \delta I & & \\
+    B & & \phantom{-}\delta I & & & \\
+    Z & & & & X
+  \end{bmatrix}.
+\]
+Of particular concern is that the matrix $A^T \! A$ is (nearly) dense if $A$ has a
+(nearly) dense row. One way to circumvent this difficulty is to introduce
+$\xi := d - A \Delta x - Ax$. An equivalent way to write the previous system is
+then
+\[
+  \begin{bmatrix}
+    & A^T & \phantom{-}\rho I & & -B^T & -I \\
+    A & I & & & & \\
+    & & & \vdots & &
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ \xi \\ \vdots
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    -c + B^T y + z - \rho s \\
+    d - A x \\
+    \vdots
+  \end{bmatrix},
+\]
+where the ellipses indicate that the rest of the system is unchanged. This
+system is larger but sparser and does away with the matrix-matrix product
+$A^T \! A$.
+
+A more natural way to give rise to the previous sparse Jacobian is to
+systematically transform every problem of the form \eqref{eq:lsq} to the form
+\begin{equation}
+  \label{eq:lsq-r}
+  \begin{aligned}
+    \minimize{x, r} \quad & c^T x + \half \|r\|^2 \\
+    \st \quad & Bx = b, \quad Ax + r = d, \quad x \geq 0,
+  \end{aligned}
+\end{equation}
+whose dual may be written
+\begin{equation}
+  \label{eq:lsq-r-dual}
+  \begin{aligned}
+    \maximize{x, r, y, z} \quad & b^T y - (A^T d)^T x - \half \|r\|^2 \\
+    \st \quad & B^T y + z + A^T r = c, \quad
+                Ax + r = d, \quad z \geq 0.
+  \end{aligned}
+\end{equation}
+Note that the quadratic term in $r$ is the same in the objective function of
+both the primal and dual problem. An important difference from standard
+quadratic programming is the appearance of the linear term in $x$ in the
+dual objective. We return to the importance of this term in
+\S\ref{sec:implementation}.
+It is interesting to note that the constraints $Ax + r = d$, defining the
+residual $r$, appear in both the primal and the dual problem. This simple fact
+turns out to guide our choice of regularization.
+
+We now consider the following regularization of \eqref{eq:lsq-r}:
+\begin{equation}
+  \label{eq:lsq-r-reg}
+  \begin{aligned}
+    \minimize{x, r, w} \quad &
+      c^T x + \half \|r\|^2 +
+      \half \rho \|x - x_k\|^2 +
+      \half \delta \|w + y_k\|^2 \\
+    \st \quad &
+      Bx + \delta w = b, \quad Ax + r = d, \quad x \geq 0.
+  \end{aligned}
+\end{equation}
+This regularization differs from \eqref{eq:lsq-reg} in two respects. First,
+no primal regularization term is added for the variables $r$ because the
+objective function of \eqref{eq:lsq-r} is already strictly convex in $r$.
+Second, the constraints $Ax + r = d$ are not regularized because they already
+have full row rank. Since the variables $r$ do not appear elsewhere in the
+constraints, the equality constraints of \eqref{eq:lsq-r-reg} have full row
+rank. No harm would be done in regularizing $Ax + r = d$ although it would
+result in a larger system. The dual of \eqref{eq:lsq-r-reg} may be stated as
+\begin{equation}
+  \label{eq:lsq-r-dual-reg}
+  \begin{aligned}
+    \maximize{x, r, y, s} \quad &
+      b^T y - (A^T d)^T x - \half \|r\|^2 -
+      \half \delta \|y - y_k\|^2 -
+      \half \rho \|s + x_k\|^2 \\
+    \st \quad &
+      A^T r + B^T y + z - \rho s = c, \quad
+      Ax + r = d, \quad
+      z \geq 0,
+  \end{aligned}
+\end{equation}
+where we introduced the auxiliary variables $s = x - x_k$. Because the dual
+\eqref{eq:lsq-r-dual-reg} also features the full-rank constraints $Ax + r = d$,
+it offers an additional elegant justification for omitting the primal
+regularization term for the variables $r$ in \eqref{eq:lsq-r-reg}. Indeed,
+regularizing those constraints in \eqref{eq:lsq-r-dual-reg} precisely amounts
+to adding the primal regularization term in question. It is now evident that
+upon setting $\rho = \delta = 0$, \eqref{eq:lsq-r-reg} and
+\eqref{eq:lsq-r-dual-reg} coincide with \eqref{eq:lsq-r} and
+\eqref{eq:lsq-r-dual}, respectively. In the rest of this paper, we concentrate
+on the formulation \eqref{eq:lsq-r-reg}--\eqref{eq:lsq-r-dual-reg}.
+
+Proceeding as before, we let $v := (x, r, s, w, y, z)$ and define
+\begin{equation}
+  \label{eq:def-psi}
+  \Psi_k(v; \rho, \delta, \tau) :=
+  \begin{bmatrix}
+    c + \rho s - B^T y - A^T r - z \\
+    \rho x - \rho (s + x_k) \\
+    \delta y - \delta (w + y_k) \\
+    Bx + \delta w - b \\
+    Ax + r - d \\
+    Xz - \tau e
+  \end{bmatrix}.
+\end{equation}
+Note that the definition of $\Psi$ does not involve the Lagrange multipliers
+associated with the constraints $Ax + r = d$. Because those can be
+readily eliminated and are always equal to $r$. Once again, the optimality
+conditions of \eqref{eq:lsq-r-reg}--\eqref{eq:lsq-r-dual-reg} can be succinctly
+stated as $\Psi_k(v; \rho, \delta, 0) = 0$ and $(x, z) \geq 0$ while
+those of \eqref{eq:lsq-r}--\eqref{eq:lsq-r-dual} can be expressed as
+$\Psi_k(v; 0, 0, 0) = 0$ and $(x, z) \geq 0$.
+
+In the next section, we outline the main features of a long-step interior-point
+method applied to \eqref{eq:lsq-r-reg}--\eqref{eq:lsq-r-dual-reg}.
+
+\section{Interior-Point Method}
+
+This section describes the linear systems to be solved at each iteration of an
+interior-point method applied to
+\eqref{eq:lsq-r-reg}--\eqref{eq:lsq-r-dual-reg} and the neighborhood of the
+central path used to guide the iterates to a solution of \eqref{eq:lsq} and
+\eqref{eq:lsq-dual}. We end the section by stating our algorithm formally.
+
+\subsection{Linear Systems}
+
+As in the previous section,
+the Newton correction $\Delta v$ for \eqref{eq:def-psi} from the current
+approximation $v_k$ with barrier parameter $\tau_k$ solves the system
+$\nabla_v \Psi_k(v_k; \rho, \delta, \tau_k) \Delta v = -\Psi_k(v_k; \rho,
+\delta, \tau_k)$.
+%\[
+%  \begin{bmatrix}
+%           &        &  \rho I &         &           & -B^T     & -A^T & -I \\
+%           & I      &         & \rho I  &           &          & -I   &    \\
+%    \rho I &        & -\rho I &         &           &          &      &    \\
+%           & \rho I &         & -\rho I &           &          &      &    \\
+%           &        &         &         & -\delta I & \delta I &      &    \\
+%    B      &        &         &         &  \delta I &          &      &    \\
+%    A      & I      &         &         &           &          &      &    \\
+%    Z      &        &         &         &           &          &      &  X
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \Delta x \\ \Delta r \\ \Delta s^1 \\ \Delta s^2 \\ \Delta w \\
+%    \Delta y \\ \Delta \lambda \\ \Delta z
+%  \end{bmatrix}
+%  =
+%  - \Psi(v_k; \rho, \delta, \tau_k).
+%\]
+After eliminating $\Delta s$ and $\Delta w$,
+and slightly rearranging, we have
+\begin{equation}
+  \label{eq:newton-unsym}
+  \begin{bmatrix}
+    -\rho I & A^T & B^T      & I \\
+     A      & I   &          &   \\
+     B      &     & \delta I &   \\
+     Z_k    &          &     & X_k
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ \Delta r \\ \Delta y \\ \Delta z
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    c - B^T y_k - A^T r_k - z_k \\
+    d - A x_k - r_k \\
+    b - B x_k \\
+    \tau_k e - X_k z_k
+  \end{bmatrix}.
+\end{equation}
+The remaining directions may be recovered via
+\begin{equation}
+  \label{eq:other-dirs}
+  \Delta w = \Delta y - w_k, \qquad
+  \Delta s = \Delta x - s_k.
+\end{equation}
+Note that upon setting $\rho = \delta = 0$, we recover the Newton equations
+used to compute a step from the $k$-th iterate of an interior-point method
+applied to \eqref{eq:lsq-r}--\eqref{eq:lsq-r-dual}.
+
+Rather than using \eqref{eq:newton-unsym} directly, our implementation,
+described in \S\ref{sec:implementation}, makes use of
+the following symmetrization, obtained via the similarity transformation
+defined by the diagonal matrix $\blkdiag(I, I, I, Z_k^{-\shalf})$:
+\begin{equation}
+  \label{eq:newton-sym}
+  \begin{bmatrix}
+    -\rho I        & A^T & B^T      & Z_k^{\shalf} \\
+     A             & I   &          &               \\
+     B             &     & \delta I &               \\
+     Z_k^{\shalf} &     &          &  X_k
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ \Delta r \\ \Delta y \\ Z_k^{-\shalf} \Delta z
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    c - B^T y_k - A^T \lambda_k - z_k \\
+    d - A x_k - r_k \\
+    b - B x_k \\
+    \tau_k Z_k^{-\shalf} e - X_k Z_k^{\shalf} e
+  \end{bmatrix}.
+\end{equation}
+The above symmetric system differs from that traditionally used in
+interior-point methods, which results from an additional step of block Gaussian
+elimination about the $(4,4)$ block. Our motivation for using
+\eqref{eq:newton-sym} stems from recent results of
+\cite{greif-moulding-orban-2012}, who establish that as long as $\rho$ and
+$\delta$ remain bounded away from zero and strict complementarity holds at the
+limiting solution, the above  matrix remains uniformly bounded and
+uniformly nonsingular. Moreover, its condition number remains sufficiently
+small along the iterations that a reasonable number of significant digits in
+the solution may be expected \citep[\S4]{greif-moulding-orban-2012}.
+By contrast, the  matrix of the traditional system is increasingly
+ill-conditioned as $\tau_k \downarrow 0$ and typically diverges, even if strict
+complementarity holds \citep[\S3]{greif-moulding-orban-2012}.
+
+Note that the  matrix of \eqref{eq:newton-sym} is symmetric and
+quasi definite \citep{vanderbei-1995}. It is therefore strongly factorizable,
+i.e., any symmetric permutation of it possesses a $LDL^T$ factorization with
+$L$ unit lower triangular and $D$ diagonal indefinite. The computation of this
+factorization is typically cheaper than that of a sparse symmetric indefinite
+factorization because pivoting need only be concerned with sparsity
+\citep{gill-saunders-shinnerl-1996}.
+
+There is an elegant interpretation of \eqref{eq:newton-sym} that is
+particularly fitting in the present least-square framework. For simplicity, let us rewrite \eqref{eq:newton-sym} as
+\[
+  \begin{bmatrix}
+    \rho I & \phantom{-}C^T \\
+    C & -D
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ t
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    f \\ g
+  \end{bmatrix},
+  \]
+where we defined
+\[
+  C^T :=
+  \begin{bmatrix}
+    A^T & B^T & Z_k^{\shalf}
+  \end{bmatrix},
+  \quad
+  D = \blkdiag(I, \delta I, X_k),
+  \quad
+  t = (\Delta r, \Delta y, Z_k^{-\shalf} \Delta z)
+\]
+and the right-hand side is defined accordingly. This last system may be solved
+in two stages. Firstly, let $\bar{t} := -D^{-1} g$. Since $D$ is diagonal,
+computing $\bar{t}$ is trivial. The system may now equivalently be written
+\[
+  \begin{bmatrix}
+    \rho I & \phantom{-}C^T \\
+    C & -D
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ \Delta t
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    \bar{f} \, \\ 0
+  \end{bmatrix},
+\]
+where $t = \bar{t} + \Delta t$ and $\bar{f} := f - C^T \bar{t}$. This shifted
+system represents the necessary and sufficient optimality conditions of the
+unconstrained regularized linear least-squares problem
+\begin{equation}
+  \label{eq:lsq-dir}
+  \minimize{\Delta t} \
+  \half \| C^T \Delta t - \bar{f} \|_{M^{-1}}^2 + \half \|\Delta t\|_D^2,
+\end{equation}
+where $M := \rho I$.
+
+Any method requiring the solution of a symmetric quasi-definite system at each
+iteration may be interpreted as solving a regularized linear least-squares
+problem of the form \eqref{eq:lsq-dir} at each iteration. In the present
+context of solving \eqref{eq:lsq}, this interpretation is particularly fitting.
+It also forms the basis for the iterative methods developed by
+\cite{arioli-orban-2012} and hence paves the way to a matrix-free
+interior-point method for \eqref{eq:lsq}. In \S\ref{sec:implementation}, 
+however, we solve \eqref{eq:newton-sym} using a sparse $LDL^T$ factorization.
+
+\subsection{Neighborhood of the Central Path}
+
+The \textit{central path} is the set of exact roots $v(\tau)$ of
+$\Psi_k(v;\rho,\delta,\tau)$ for $\tau > 0$. For fixed $\rho$ and $\delta$, as
+$\tau$ approaches zero, it can be shown that $v(\tau)$ approaches a solution of
+\eqref{eq:lsq-r}--\eqref{eq:lsq-r-dual} \citep{FiaccoMcCormick}.
+Note that the last block equation of $\Psi_k(v;\rho,\delta,\tau) = 0$ implies
+that $[x(\tau)]_i [z(\tau)]_i = \tau$ for all $i = 1, \ldots, n$.
+
+Typical interior-point methods compute estimates $v_k$ for some sequence
+$\{\tau_k\} \downarrow 0$ that are close, in some sense, to $v(\tau_k)$. This
+concept of proximity is formalized by a neighborhood of the central path. A
+usual choice is $\tau_k := \sigma_k \mu_k$, where $\sigma_k \in (0,1)$ is a
+\textit{centering} parameter and $\mu_k := x_k^T z_k / n$ measures the
+average centrality. If $v_k$ lies exactly on the central path, we have $[x_k]_i
+[z_k]_i = \mu_k$ for all $i = 1, \ldots, n$. The quantity $\mu_k$ is also
+directly proportional to the duality gap between \eqref{eq:lsq-r} and
+\eqref{eq:lsq-r-dual} if $v_k$ is primal-dual feasible.
+
+A difference
+between our approach and traditional interior-point methods is that during the
+course of the iterations, the regularization parameters $\rho$ and $\delta$ may
+be updated. At the $k$-th iteration, the current iterate is $v_k$ and the
+regularization parameters have values $\rho_k$ and $\delta_k$. The neighborhood
+$\mathcal{N}_k$ is defined by an appropriate \textit{subset} of the following
+conditions:
+\begin{subequations}
+  \label{eq:neighborhood}
+  \begin{align}
+    \bar{\gamma}_C x^T z / n & \geq [x]_i [z]_i \geq \gamma_C x^T z / n,
+    \label{eq:centrality} \\
+    x^T z & \geq \gamma_P \|Bx + \delta_k w - b\|, \label{eq:pFeas} \\
+    x^T z & \geq \gamma_R \|Ax + r - d\|, \label{eq:lsqFeas} \\
+    x^T z & \geq \gamma_D \|c + \rho_k s - B^T y - A^T r - z\|,
+    \label{eq:dFeas} \\
+    x^T z & \geq \gamma_S \|\rho_k x - \rho_k(s + x_k)\|, \label{eq:sx} \\
+    x^T z & \geq \gamma_W \|\delta_k y - \delta_k (w + y_k)\|,
+    \label{eq:yw}
+\end{align}
+\end{subequations}
+where $0 < \gamma_C < 1 < \bar{\gamma}_C$ and $(\gamma_P, \gamma_R, \gamma_D,
+\gamma_S,\gamma_W) > 0$ are given constants. Our interior-point scheme computes
+a steplength $\alpha_k \in (0,1]$ as well as updated regularization parameters
+$\rho_{k+1}$ and $\delta_{k+1}$ so that the next iterate $v_{k+1} =
+v_k(\alpha_k) := v_k + \alpha_k \Delta v \in \mathcal{N}_{k+1}$.
+
+\subsection{Algorithm}
+
+Our algorithm is the same as \cite[Algorithm~$4.1$]{friedlander-orban-2012}
+except for of the linear system used in Step~$2$, and is formalized as
+Algorithm~\ref{alg:pd-reg}.
+
+\begin{algorithm}[htbp]
+  \caption{%
+    Primal-Dual Regularized Interior-Point Algorithm
+    \label{alg:pd-reg}
+  }
+  \begin{description}
+    \item[\textbf{Step 0}] [{\bf Initialize}] Choose minimum and maximum
+      centering parameters $0 < \sigma_{\min} \leq \sigma_{\max} < 1$, a
+      constant $\sigma_{max} < \beta < 1$, proximity parameters $0 < \gamma_C <
+      1 < \bar{\gamma}_C$ and $(\gamma_P,\gamma_R,\gamma_D,\gamma_S,\gamma_W) >
+      0$, initial regularization parameters $\rho_0 > 0$, $\delta_0 > 0$, and a
+      stopping tolerance $\epsilon > 0$. Let the neighborhood of the central
+      path be defined by \eqref{eq:centrality}--\eqref{eq:dFeas}. Choose initial primal $x_0 \in
+      \R_{++}^n$, $r_0 \in \R^m$, $w_0 \in \R^m$ and dual guesses $s_0 \in
+      \R^n$, $y_0 \in \R^m$,  $z_0 \in \R_{++}^n$ so that $v_0 \in
+      \mathcal{N}_0$. Set $\mu_0 := x_0^T z_0 / n$ and $k = 0$.
+      %
+    \item[\textbf{Step 1}] [{\bf Test convergence }] If
+      $x_k^T z_k \leq \epsilon$, declare convergence.
+      %
+    \item[\textbf{Step 2}] [{\bf  Step  computation}] Choose a centering
+      parameter $\sigma_k \in [\sigma_{\min},\sigma_{\max}]$. Compute the Newton
+      step $\Delta v_k$, e.g., by solving \eqref{eq:newton-unsym} with
+      $\tau_k := \sigma_k \mu_k$ and
+      recovering the remaining components from \eqref{eq:other-dirs}.
+      %
+    \item[\textbf{Step 3}] [{\bf  Linesearch}] Select $\delta_{k+1} \in
+      (0,\delta_k]$ and $\rho_{k+1} \in (0,\rho_k]$ and compute $\alpha_k$ as
+      the largest $\alpha \in (0,1]$ such that
+      \[
+        v_k(\alpha) \in \mathcal{N}_{k+1}
+        \quad \text{and} \quad
+        \mu_k(\alpha) \leq (1 - \alpha (1-\beta)) \mu_k,
+      \]
+      where $\mu_k(\alpha) := x_k(\alpha)^T z_k(\alpha) / n$.
+      %
+    \item[\textbf{Step 4}] [{\bf Update iterates}] Set
+      $v_{k+1} := v_k(\alpha_k)$, $\mu_{k+1} := \mu_k(\alpha_k)$. Increment $k$
+      by $1$ and go to Step~$1$.
+  \end{description}
+\end{algorithm}
+
+\cite{friedlander-orban-2012} present two variants of
+Algorithm~\ref{alg:pd-reg}. The first variant keeps $\rho$ and $\delta$ fixed
+throughout the iterations and only considers \eqref{eq:centrality}--\eqref{eq:dFeas} in the definition of
+$\mathcal{N}_k$. In the second variant, $\rho_k$ and $\delta_k$ are allowed to
+decrease at most linearly and $\mathcal{N}_k$ is defined by
+\eqref{eq:centrality}, \eqref{eq:sx} and \eqref{eq:yw}. Both variants have
+similar convergence properties. In our implementation, described in
+\S\ref{sec:implementation}, we initially decrease $\rho_k$ and $\delta_k$ 
+to speed up convergence, but eventually keep them fixed at a level that
+guarantees numerical stability of the factorization of the  matrix
+of \eqref{eq:newton-sym}. For this reason, in the next section, we only cover
+the convergence properties of the variant with fixed regularization parameters.
+
+\section{Convergence Analysis}
+
+Our convergence analysis rests upon a variation on
+\cite[Theorem~$1$]{armand-benoist-2011} stating that the inverse of the
+ matrix of \eqref{eq:newton-unsym} remains uniformly bounded as long
+as $\{x_k\}$ and $\{z_k\}$ remain bounded away from zero. The reason for this
+unconventional last assumption is that the convergence proof proceeds by
+contradiction on the fact that $\{\mu_k\}$ converges to zero. We begin by
+stating the result on the boundedness of the inverse  matrix.
+
+\begin{btheorem}
+  \label{thm:inv-bounded}
+  Let $\{M_k\}$ be a sequence of $n \times n$ real symmetric matrices,
+  $\{A_k\}$ be a sequence of $p \times n$ real matrices, $\{B_k\}$ be a
+  sequence of $m \times n$ real matrices, and $\{\delta_k\}$ be a sequence of
+  positive numbers. Let $\{x_k\}$ and $\{z_k\}$ be two sequences of $\R^n$ with
+  positive components. Define for all $k \in \N$,
+  \[
+    J_k :=
+    \begin{bmatrix}
+      M_k & A_k^T & B_k^T       & -I \\
+      A_k & -I    &             & \\
+      B_k &       & -\delta_k I & \\
+      Z_k &       &             & X_k
+    \end{bmatrix}.
+  \]
+  Assume the following properties are satisfied:
+  \begin{enumerate}
+    \item \label{item:bounded}
+      The sequences $\{M_k\}$, $\{A_k\}$ and $\{B_k\}$ are bounded.
+    \item \label{item:delta}
+      The sequence $\{\delta_k\}$ is bounded away from zero.
+    \item \label{item:mu}
+      There exists $\eta > 0$ such that for all $k \in \N$ and all $i
+      \in \{1, \ldots, n\}$,
+      \begin{equation}
+        \label{eq:contradiction}
+        [x_k]_i [z_k]_i \geq \eta.
+      \end{equation}
+    \item \label{item:convex}
+      There exists $\lambda > 0$ such that for all $k \in \N$ and all $d
+      \in \R^n$,
+      \[
+        d^T H_k d \geq \lambda \|d\|^2,
+      \]
+      where $H_k := M_k + X_k^{-1} Z_k + \delta_k^{-1} B_k^T B_k + A_k^T A_k$.
+  \end{enumerate}
+  Then the sequence $\{J_k^{-1}\}$ is well defined and bounded.
+\end{btheorem}
+
+\begin{proof}
+  It suffices to apply \cite[Theorem~$1$]{armand-benoist-2011} to the matrix
+  $\blkdiag(I, \sqrt{\delta_k} I, I, I) J_k \blkdiag(I, \sqrt{\delta_k} I, I,
+  I)$.
+\end{proof}
+
+Our interest in Theorem~\ref{thm:inv-bounded} is to set $M_k := \rho I$, $A_k :=
+-A$ and $B_k := -B$ for all $k$. This guarantees that
+Assumption~(\ref{item:bounded}) is satisfied. Assumption~(\ref{item:delta}) is
+satisfied because Algorithm~\ref{alg:pd-reg} works with fixed regularization
+parameters. Assumption~(\ref{item:convex}) is also satisifed because of our
+definition of $M_k$. Assumption~(\ref{item:mu}) will be the main contradiction
+assumption. Note also that  $J_k$ of Theorem~\ref{thm:inv-bounded} is
+the  matrix of \eqref{eq:newton-unsym} multiplied by the diagonal
+matrix $\blkdiag(-I, -I, -I, I)$. Therefore, their inverses are simultaneously
+uniformly bounded.
+
+Our first result gives conditions under which the right-hand side
+of \eqref{eq:newton-unsym} is bounded.
+
+\begin{blemma}
+  \label{lem:rhs-bounded}
+  Let $\{v_k\}$ be the sequence generated by Algorithm~\ref{alg:pd-reg}. Assume
+  $\{(s_k, w_k)\}$ remains bounded. Then the right-hand side of
+  \eqref{eq:newton-unsym} is uniformly bounded.
+\end{blemma}
+
+\begin{proof}
+  Using our assumption that $\{w_k\}$ is bounded, we have
+  \[
+    \|b - B x_k\| \leq
+    \|b - Bx_k - \delta w_k\| + \delta \|w_k\| \leq
+    \gamma_P^{-1} n \mu_k + \delta \sup_k \|w_k\|,
+  \]
+  where we used the definition of $\mu_k = x_k^T z_k / n$ and \eqref{eq:pFeas}.
+  Since Algorithm~\ref{alg:pd-reg} ensures that $\{\mu_k\}$ is decreasing, the
+  above establishes boundedness of $\{b - B x_k\}$. The boundedness of $\{c -
+  A^T r_k - B^T y_k - z_k\}$ follows similarly from the boundedness of
+  $\{s_k\}$ and \eqref{eq:dFeas}. Boundedness of $\{A x_k + r_k - d\}$ follows
+  directly from \eqref{eq:lsqFeas}. Finally, boundedness of $\{\sigma_k \mu_k -
+  X_k z_k\}$ follows from \eqref{eq:centrality} and the boundedness of
+  $\{\sigma_k\}$ and $\{\mu_k\}$.
+\end{proof}
+
+Using Theorem~\ref{thm:inv-bounded} and Lemma~\ref{lem:rhs-bounded}
+we obtain uniform boundedness of the direction $\Delta v$ under the
+contradiction assumption.
+
+\begin{blemma}
+  \label{lem:dir-bounded}
+  Let $\{v_k\}$ be the sequence generated by Algorithm~\ref{alg:pd-reg}. Assume
+  $\{(s_k, w_k)\}$ remains bounded and assume that there exists $\eta > 0$
+  such that \eqref{eq:contradiction} is satisfied. Then the direction $\Delta
+  v$ is uniformly bounded.
+\end{blemma}
+
+\begin{proof}
+  %
+  % Old proof.
+  %
+  %Theorem QUOTE and Lemma~\ref{lem:rhs-bounded} immediately imply that $(\Delta
+  %x, \Delta r, \Delta y, Z_k^{-\shalf} \Delta z)$ is uniformly bounded. As a
+  %consequence, there is a constant $M > 0$ such that $\|Z_k^{-\shalf} \Delta
+  %z\| \leq M$ for all $k$. Therefore,
+  %\[
+  %  \|\Delta z\| \leq
+  %  \|Z_k^{\shalf}\| \, \|Z_k^{-\shalf} \Delta z\| \leq
+  %  M \, \sup_k \sqrt{\|z_k\|_{\infty}},
+  %\]
+  %and this upper bound is finite by assumption.
+  %
+  Using Theorem~\ref{thm:inv-bounded} and Lemma~\ref{lem:rhs-bounded}, we obtain
+  that $(\Delta x, \Delta r, \Delta y, \Delta z)$ is uniformly bounded.
+  Finally, \eqref{eq:other-dirs}
+  and boundedness of $\{s_k\}$ and $\{w_k\}$ yield boundedness of $\{\Delta
+  s\}$ and $\{\Delta w\}$.
+\end{proof}
+
+A careful inspection of \cite[\S$5.2$ and \S$5.4$]{friedlander-orban-2012}
+reveals that Lemma~\ref{lem:dir-bounded} is all that is required to establish
+that the sequence $\{\mu_k\}$ converges to zero in Algorithm~\ref{alg:pd-reg}.
+More precisely, we have the following global convergence result.
+
+\begin{btheorem}[{\citealt[Theorem~$5.10$]{friedlander-orban-2012}}]
+  \label{thm:global-conv}
+  Let $\{v_k\}$ be the sequence generated by Algorithm~\ref{alg:pd-reg} with
+  $\epsilon = 0$. Assume $\{(s_k, w_k)\}$ remains bounded. Then $\{\mu_k\} \to
+  0$.
+\end{btheorem}
+
+\begin{proof}
+  The proof is by contradiction. Assume that $\{\mu_k\}$ remains bounded away
+  from zero. Because of \eqref{eq:centrality}, there must exist $\eta > 0$
+  such that \eqref{eq:contradiction} is satisfied. We conclude from
+  Lemma~\ref{lem:dir-bounded} that $\Delta v$ is uniformly bounded. The rest of
+  the proof proceeds as for \cite[Theorem~$5.4$]{friedlander-orban-2012} to
+  conclude that
+  \[
+    0 < \eta \leq \mu_{k+1} \leq \gamma \mu_k \leq \cdots \leq \gamma^{k+1}
+    \mu_0,
+  \]
+  for some constant $\gamma \in (0,1)$. Since the right-hand side of those
+   inequalities converges to zero, we obtain the contradiction.
+\end{proof}
+
+The nature of the limit points of the sequence generated by
+Algorithm~\ref{alg:pd-reg} is stated in the next two results. The first states
+that in general, a solution of a perturbed primal-dual pair is identified. This
+primal-dual pair coincides with the original pair \eqref{eq:lsq} and
+\eqref{eq:lsq-dual} but has shifted linear terms and right-hand sides.
+
+\begin{btheorem}[{\citealt[Theorem~$5.5$]{friedlander-orban-2012}}]
+  \label{thm:perturbed-pairs}
+  Let $\{v_k\}$ be the sequence generated by Algorithm~\ref{alg:pd-reg} with
+  $\epsilon = 0$. Assume $\{(s_k, w_k)\}$ remains bounded. If $w_*$ and $s_*$
+  denote particular limit points of $\{w_k\}$ and $\{s_k\}$ defined by
+  subsequences indexed by the index set $\mathcal{K} \subseteq \N$, every limit
+  point of $\{(x_k,r_k,z_k)\}_{\mathcal{K}}$ determines a primal-dual solution
+  of the primal-dual pair
+  \begin{equation}
+    \label{eq:lsq-r-perturbed}
+    \begin{aligned}
+      \minimize{x, r} \quad & (c + \rho s_*)^T x + \half \|r\|^2 \\
+      \st \quad & Bx = b - \delta w_*, \quad Ax + r = d, \quad x \geq 0,
+    \end{aligned}
+  \end{equation}
+  and
+  \begin{equation}
+    \label{eq:lsq-r-dual-perturbed}
+    \begin{aligned}
+      \maximize{x, r, y, z} \quad &
+        (b - \delta w_*)^T y - (A^T d)^T x - \half \|r\|^2 \\
+      \st \quad & B^T y + z + A^T r = c + \rho s_*, \quad
+                  Ax + r = d, \quad z \geq 0.
+    \end{aligned}
+  \end{equation}
+\end{btheorem}
+
+It is now clear, in light of Theorem~\ref{thm:perturbed-pairs}, that whenever
+$s_* = 0$ and $w_* = 0$, we recover a primal-dual solution of the original
+problem. That is the essence of the second result.
+
+\begin{btheorem}[{\citealt[Theorem~$5.6$]{friedlander-orban-2012}}]
+  \label{thm:limit-points}
+  Let $\{v_k\}$ be the sequence generated by Algorithm~\ref{alg:pd-reg} with
+  $\epsilon = 0$. Assume $\{(s_k, w_k)\}$ remains bounded. Then
+  \begin{enumerate}
+    \item If $\{w_k\}_{\mathcal{K}} \to 0$ for some index set $\mathcal{K}
+      \subseteq \N$, every limit point of $\{(x_k,r_k)\}_{\mathcal{K}}$ is
+      feasible for \eqref{eq:lsq}.
+    \item If $\{s_k\}_{\mathcal{K}'} \to 0$ for some index set $\mathcal{K}'
+      \subseteq \N$, every limit point of $\{(x_k,r_k,z_k)\}_{\mathcal{K}'}$
+      determines a feasible point for \eqref{eq:lsq-dual}.
+    \item If $\{(s_k,w_k)\}_{\mathcal{K}''} \to 0$ for some index set
+      $\mathcal{K}'' \subseteq \N$, every limit point of
+      $\{(x_k,r_k,z_k)\}_{\mathcal{K}''}$ determines a primal-dual solution of
+      \eqref{eq:lsq}--\eqref{eq:lsq-dual}.
+  \end{enumerate}
+\end{btheorem}
+
+The typical case in practice is that $\liminf \|(s_k,w_k)\| = 0$ and the
+regularization approach recovers a solution of the original primal-dual pair
+\eqref{eq:lsq}--\eqref{eq:lsq-dual}. Cases where $\liminf \|s_k\| = 0$ but
+$\liminf \|w_k\| > 0$, or the other way around, suggest that either \eqref{eq:lsq}
+or \eqref{eq:lsq-dual} is infeasible.
+
+\section{Implementation and Numerical Results}
+\label{sec:implementation}
+
+% \begin{itemize}
+%   \item Slack form for problems with free variables
+%   \item Implementation in NLPy
+%   \item Test problems
+%   \item Results
+% \end{itemize}
+
+\subsection{Implementation}
+
+Our implementation is strongly based on that of \cite{friedlander-orban-2012}
+with the difference that a step $\Delta v$ is computed using
+\eqref{eq:newton-sym} instead of a partial reduction of this system. The
+implementation accepts problems with free variables in so-called \textit{slack
+form}
+%\begin{equation}
+%  \label{eq:lsq-slack}
+%  \minimize{x,r,t} \quad c^T x + \half \|r\|^2 \quad
+%  \st \ Bx + Ct = b, \ t \geq 0,
+%\end{equation}
+%whose dual may be written
+%\begin{equation}
+%  \label{eq:lsq-slack-dual}
+%  \begin{aligned}
+%    \maximize{x,y,z} \quad & b^T y - (A^T d)^T x - \half \|Ax - d\|^2 \\\
+%    \st \quad & B^T y - A^T \! Ax = c - A^T d, \ C^T y + z = 0, \ z \geq 0.
+%  \end{aligned}
+%\end{equation}
+\begin{equation}
+  \label{eq:lsq-r-slack}
+  \begin{aligned}
+    \minimize{x, r, t} \quad & c^T x + \half \|r\|^2 \\
+    \st \quad & Bx + Ct = b, \quad Ax + r = d, \quad t \geq 0,
+  \end{aligned}
+\end{equation}
+whose dual may be written
+\begin{equation}
+  \label{eq:lsq-r-slack-dual}
+  \begin{aligned}
+    \maximize{x, r, y, z} \quad & b^T y - (A^T d)^T x - \half \|r\|^2 \\
+    \st \quad & B^T y + A^T r = c, \quad
+                C^T y + z = 0, \quad
+                Ax + r = d, \quad z \geq 0.
+  \end{aligned}
+\end{equation}
+The problem is systematically turned to the form
+\eqref{eq:lsq-r}--\eqref{eq:lsq-r-dual}. The system used to compute a Newton
+step at iteration $k$ now takes the form
+\begin{equation}
+  \label{eq:newton-sys-slack}
+  \begin{bmatrix}
+    -\rho I &              & A^T & B^T      & \\
+            & -\rho I      &     & C^T      & Z^{\shalf} \\
+     A      &              & I   &          & \\
+     B      &  C           &     & \delta I & \\
+            &  Z^{\shalf} &     &          & T
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\ \Delta t \\ \Delta r \\ \Delta y \\ Z^{-\shalf} \Delta z
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    c - A^T r - B^T y \\
+    -C^T y - z \\
+    d - Ax - r \\
+    b - Bx - Ct \\
+    Z^{-\shalf} (\sigma_k \mu_k e - T_k z_k)
+  \end{bmatrix}.
+\end{equation}
+This system is solved by  sparse $LDL^T$ factorization using
+\textsf{MA57} from \cite{duff-2004} as implemented in the \cite{HSL} with  the pivot tolerance to zero. Although in theory some components of $T$
+ converge to zero, and therefore the limiting matrix is not symmetric
+and quasi definite, all components of $T$ remain larger than, say, $10^{-8}$ in
+practice and we have not encountered numerical difficulties related to the
+factorization. In \S\ref{sec:discussion}, we discuss alternatives that rule out
+such potential numerical difficulty. The important advantage of the
+ matrix above is that its condition number remains uniformly bounded
+provided strict complementarity holds in the limit.
+
+The algorithm implemented is a predictor-corrector variant of the long-step
+method described in Algorithm~\ref{alg:pd-reg}. It is worth briefly describing
+how we adapted the initial-point procedure of \cite{mehrotra-1992}. The initial
+values of $(x,r,t)$ are chosen by solving the minimum-norm problem
+\begin{equation}
+  \label{eq:init-xrt}
+  \begin{aligned}
+    \minimize{x, r, t} \quad & \half \|r\|^2 + \half \|t\|^2 \\
+    \st \quad & Bx + Ct = b, \quad Ax + r = d,
+  \end{aligned}
+\end{equation}
+while $(y,z)$ are initialized by solving
+\begin{equation}
+  \label{eq:init-yz}
+  \begin{aligned}
+    \maximize{\xi, u, y, z} \quad &
+      - (A^T d)^T \xi - \half \|u\|^2 - \half \|z\|^2 \\
+    \st \quad & B^T y + A^T u = c, \quad
+                C^T y + z = 0, \quad
+                A \xi + u = d.
+  \end{aligned}
+\end{equation}
+The inclusion of the linear term in $x$ in the objective of \eqref{eq:init-yz}
+is important in order for the optimality conditions of both problems to share
+a common  matrix. Indeed, the solution of both problems may be
+approximated via a linear system with two right-hand sides:
+% \begin{equation}
+%   \label{eq:init-xrt-sys}
+%   \begin{bmatrix}
+%     -\rho_0 I &    & A^T & B^T        &   \\
+%               & -I &     & C^T        & I \\
+%      A        &    & I   &            &   \\
+%      B        &  C &     & \delta_0 I &   \\
+%               &  I &     &            & I
+%   \end{bmatrix}
+%   \begin{bmatrix}
+%     x \\ t \\ r \\ \eta \\ \zeta
+%   \end{bmatrix}
+%   =
+%   \begin{bmatrix}
+%     0 \\ 0 \\ d \\ b \\ 0
+%   \end{bmatrix},
+% \end{equation}
+% and
+% \begin{equation}
+%   \label{eq:init-yz-sys}
+%   \begin{bmatrix}
+%     -\rho_0 I &    & A^T & B^T        &   \\
+%               & -I &     & C^T        & I \\
+%      A        &    & I   &            &   \\
+%      B        &  C &     & \delta_0 I &   \\
+%               &  I &     &            & I
+%   \end{bmatrix}
+%   \begin{bmatrix}
+%     \xi \\ -z \\ u \\ y \\ \omega
+%   \end{bmatrix}
+%   =
+%   \begin{bmatrix}
+%     c \\ 0 \\ d \\ 0 \\ 0
+%   \end{bmatrix},
+% \end{equation}
+\[
+  \begin{bmatrix}
+    -\rho_0 I &           & A^T & B^T        &   \\
+              & -\rho_0 I &     & C^T        & I \\
+     A        &           & I   &            &   \\
+     B        &  C        &     & \delta_0 I &   \\
+              &  I        &     &            & I
+  \end{bmatrix}
+  \begin{bmatrix}
+    x     & \phantom{-}\xi \\
+    t     & -z  \\
+    r     & \phantom{-}u   \\
+    \eta  & \phantom{-}y   \\
+    \zeta & \phantom{-}\omega
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    0 & c \\
+    0 & 0 \\
+    d & d \\
+    b & 0 \\
+    0 & 0
+  \end{bmatrix},
+\]
+for some auxiliary variables $\eta$, $\zeta$, $\xi$ and $\omega$. The
+auxiliary variables $\zeta$ and $\omega$ together with the last block equation
+of each system are introduced so the  matrix above has the same
+sparsity pattern as that of \eqref{eq:newton-sys-slack}. In addition, the
+regularization constants $\rho_0$ and $\delta_0$, both set to $10^{-4}$,  are
+introduced so this  matrix is symmetric and quasi definite and to
+guard against rank deficiency.
+
+All other initializations and updates are as described by
+\cite{friedlander-orban-2012}. In particular, $\rho$ and $\delta$ are
+initialized to the value $1$ and divided by $10$ at each iteration but are not
+allowed to decrease below $10^{-8}$. The method is implemented in the Python
+language as part of the \textsf{NLPy} library \citep{orban-2012}.
+
+\subsection{Numerical Results}
+
+We illustrate the performance of our approach on instances of the
+$\ell_1$-regularized linear least-squares problem
+\begin{equation}
+  \label{eq:l1reg}
+  \minimize{x \in \R^n} \ \half \|Ax - d\|_2^2 + \lambda \|x\|_1,
+\end{equation}
+which can be reformulated as the smooth bound-constrained linear least-squares
+problem
+\begin{equation}
+  \label{eq:l1reg-smooth}
+  \minimize{x \in \R^n, u \in \R^n} \ \half \|Ax - d\|_2^2 + \lambda e^T u
+  \quad
+  \st \ -u \leq x \leq u,
+\end{equation}
+where $\lambda > 0$ is a fixed regularization parameter and $e$ is the vector
+of ones in $\R^n$. After introducing the residual, this last problem has the
+general form \eqref{eq:lsq-r-slack}.
+
+We contrast our results on sparse signal recovery problems generated randomly
+following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}
+against two comparable and closely related methods. The first is
+\texttt{l1\_ls}, an inexact Newton interior-point method specifically designed
+for \eqref{eq:l1reg} also described by
+\cite{kim-koh-lustig-boyd-gorinevsky-2007}. In \texttt{l1\_ls}, a primal
+barrier method is applied to \eqref{eq:l1reg-smooth} and approximate Newton
+steps are computed using the preconditioned conjugate-gradient method. In
+particular, the Hessian contains a term of the form $A^T A$ and this term is
+preconditioned by its diagonal. The remainder of the Hessian consists of
+diagonal terms that appear directly in the preconditioner. The second method
+is PDCO\footnote{\http{www.stanford.edu/group/SOL/software/pdco.html}}, a
+primal-dual interior-point method designed to solve convex problems of the
+form
+\begin{equation}
+  \label{eq:prob-pdco}
+  \minimize{x \in \R^n, r \in \R^m} \
+  \phi(x) + \half \|D_1 x\|^2_2 + \half \|r\|_2^2
+  \quad
+  \st \ Ax + D_2 r = b, \ l \leq x \leq u,
+\end{equation}
+where $\phi: \R^n \to \R$ is smooth and convex, $D_1$ and $D_2$ are positive
+definite diagonal matrices, and $l$ and $u$ are vectors in $\R^n$ with
+possibly infinite components. PDCO has options to compute Newton steps using a
+direct or iterative method. In addition, we compare our results against those of a state-of-the-art primal-dual interior-point method for nonlinear optimization
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Linear Systems}
+
+\cite{gill-saunders-shinnerl-1996} show that the $LDL^T$ factorization of a
+symmetric and quasi--definite matrix becomes increasingly unstable if either
+diagonal block approaches singularity or if an off-diagonal block becomes
+large. Specifically, we have the result
+\begin{btheorem}[{\citealt[Result~$4.2$]{gill-saunders-shinnerl-1996}}]
+  \label{thm:gss}
+  Let
+  \[
+    K :=
+    \begin{bmatrix}
+      H & \phantom{-}V^T \\
+      V & -G^{\phantom{T}}
+    \end{bmatrix}
+  \]
+  be a symmetric quasi-definite matrix. The factorization $P K P^T = L D L^T$,
+  where $L$ is unit lower triangular and $D$ is diagonal, is stable for every
+  permutation matrix $P$ if
+  \[
+    \theta(K) :=
+    \left(
+      \frac{\|V\|_2}{\max(\|G\|_2, \|H\|_2)}
+    \right)^2
+    \,
+    \max( \kappa_2(G), \kappa_2(H) ),
+  \]
+  is not too large, where $\kappa_2$ denotes the spectral condition number.
+\end{btheorem}
+Clearly, if $G$ approaches singularity, $\theta(K)$ becomes large. This is not
+to say that there does not exist some permutation $P$ for which the
+factorization is stable. However, this permutation, if it exists, may not yield
+particularly sparse factors.
+
+One possibility in this case is to resort to the usual symmetric indefinite
+factorization with $1 \times 1$ and $2 \times 2$ pivots. The additional cost
+incurred may be acceptable because it should only be necessary in the last few
+iterations. Another possibility is to perform the usual block elimination on
+\eqref{eq:newton-sym} and reduce it to a system with  matrix
+\[
+  \begin{bmatrix}
+    - (X_k^{-1} Z_k + \rho I) & A^T & B^T \\
+      A                       & I   &     \\
+      B                       &     & \delta I
+  \end{bmatrix}.
+\]
+Zero elements on the diagonal no longer occur but unfortunately the above
+matrix no longer has a bounded condition number. Theorem~\ref{thm:gss} also
+suggests that the $LDL^T$ factorization is still unstable. A third possibility
+is to perform an additional transform by multiplying the  matrix of
+\eqref{eq:newton-sym} on the left and right by $\blkdiag(I, I, I, X^{-\shalf})$
+and scale the vector of unknowns and the right-hand side accordingly. This
+yields the  matrix
+\[
+  \begin{bmatrix}
+    -\rho I                     & A^T & B^T      & X_k^{-\shalf} Z_k^{\shalf} \\
+     A                          & I   &          &               \\
+     B                          &     & \delta I &               \\
+     X_k^{-\shalf} Z_k^{\shalf} &     &          &  I
+  \end{bmatrix}.
+\]
+This time it is $\|V\|_2$ that becomes large in Theorem~\ref{thm:gss}. Finally,
+eliminating the small diagonal elements of $x$ in the vein of \cite{gould-1986}
+again produces a limiting matrix that is not quasi definite. It appears
+difficult to maintain safe quasi definiteness in the limit if at least one
+bound constraint is active at a solution.
+
+In our situation, however, we conjecture that there exists a permutation that
+produces a stable factorization of \eqref{eq:newton-sym} for the following
+reason. Suppose the sequences $\{x_k\}$ and $\{z_k\}$ generated by
+Algorithm~\ref{alg:pd-reg} converge to $x_*$ and $z_*$, respectively. Define
+the index sets
+\[
+  \mathcal{A} := \{ i \mid [x_*]_i = 0 \} \qquad
+  \mathcal{I} := \{ i \mid [x_*]_i > 0 \}.
+\]
+By complementarity, we have $[z_*]_i = 0$ for all $i \in \mathcal{I}$. If we
+assume that strict complementarity holds at $(x_*, z_*)$, then we also have
+$[z_*]_i > 0$ for all $i \in \mathcal{A}$. Therefore, for all sufficiently
+large indices $k$, \eqref{eq:centrality} implies that
+\begin{alignat}{3}
+  [x_k]_i & = \Theta(\mu_k) \qquad & [z_k]_i & = \Theta(1) \quad &
+  (i \in \mathcal{A}) \\
+  [z_k]_i & = \Theta(\mu_k) \qquad & [x_k]_i & = \Theta(1) \quad &
+  (i \in \mathcal{I}).
+\end{alignat}
+Consider the following example matrix representative of a problem with $3$
+variables and bound constraints only, two of which are active in the limit:
+\[
+  K =
+  \begin{bmatrix}
+    -1          &    &    & \sqrt{\mu} &     &   \\
+                & -1 &    &            & 1   &   \\
+                &    & -1 &            &     & 1 \\
+     \sqrt{\mu} &    &    & 1          &     &   \\
+                &  1 &    &            & \mu &   \\
+                &    &  1 &            &     & \mu
+  \end{bmatrix}.
+\]
+Without permutation, the $LDL^T$ factorization of $K$ yields
+\[
+  L =
+  \begin{bmatrix}
+    1 &&&&& \\
+    & 1 &&&& \\
+    && 1 &&& \\
+    -\sqrt{\mu} &&& 1 && \\
+    & -1 &&& 1 & \\
+    && -1 &&& 1
+  \end{bmatrix}
+  \qquad
+  D =
+  \begin{bmatrix}
+    -1 &&&&& \\
+    & -1 &&&& \\
+    && -1 &&& \\
+    &&& 1+\mu && \\
+    &&&& 1+\mu & \\
+    &&&&& 1+\mu
+  \end{bmatrix}
+\]
+Therefore, this factorization is stable in the sense that there exists a
+moderate constant $\gamma > 0$ such that
+\[
+  \| \, |L| \, |D| \, |L^T| \, \| \leq \gamma \|K\|,
+\]
+where the absolute value of a matrix is the matrix of the absolute values of
+its elements---see \cite{golub-vanloan-1996}. In fact, the relative error
+between the computed $LDL^T$ and $K$ is of the order of the machine precision for
+all $\mu$ larger than the machine epsilon. Note that $\mu$ never becomes that
+small in practice. If we exchange the first and second variables in $K$, the
+relative error for $\mu = 10^{-16}$ rises to about $70\%$. Though the above
+example is no proof, it leads us to speculate that as long as the small
+elements of $X_k$---i.e., those in $\mathcal{A}$---appear last on the diagonal,
+the factorization will be stable. This example is inspired by and related to
+similar examples by \cite{vanderbei-1995} and
+\cite{gill-saunders-shinnerl-1996}.
+
+\subsection{Extensions}
+
+Many linear least-squares problems are already stated in regularized form
+\begin{equation}
+  \label{eq:reg-lsq}
+  \minimize{x \in \R^n} \ c^T x + \half \|Ax - d\|^2 + \half \|Dx\|^2 \quad
+  \st \ Bx = b, \ x \geq 0,
+\end{equation}
+where $D \in \R^{n \times n}$ is symmetric and positive semidefinite. Most
+often, $D$ is a multiple of the identity but other situations are possible. In
+particular, we allow $D$ to be singular for situations where the regularization
+applies to a subset of the variables.
+
+We anticipate that our convergence theory carries over to more general convex
+terms in the objective function in the vein  of PDCO---see
+\http{www.stanford.edu/group/SOL/software/pdco.html}
+
+Finally, the generalization of our approach to nonlinear least-squares
+problems with linear constraints is the subject of current investigation.
+\subsection{Numerical Aspects}
+
+We consider (\ref{eq:lsq-reg}) the regularization of \eqref{eq:lsq} proposed by
+\cite{friedlander-orban-2012}. Our method is implemented in the Python
+language as part of the \textsf{NLPy} library \citep{orban-2012}. We illustrate the performance of our approach against PDCO---see
+\http{www.stanford.edu/group/SOL/software/pdco.html} and $\ell_1-\ell_s$  on sparse single recovery problems generated randomly following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}. 
+The regularization parameter  was taken as $\delta=0.0001$ in ~\ref{eq:l1reg}.
+All large-scale  problems,  scaled form  achieves significantly better performance in terms of   number of iterations, cost, KKT residual, run time, and number of iteration in lsmr   while applying LSMR to the Newton system in LSQ and PDCO. We consider  PCG iteration for $\ell_1-\ell_s$.
+
+
+\include{SubFiles/NumericalResults}
+\include{SubFiles/Conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{lsq}
+\end{document}

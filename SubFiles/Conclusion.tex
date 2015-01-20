@@ -1,0 +1,218 @@
+
+%\subsection{Numerical Aspects}
+
+
+%\section{Conclusion}
+%\label{sec:conclusion}
+%In this work, we  consider  constrained linear least-squares problems in standard
+%form
+%\begin{equation}
+%  \label{eq:lsq5}
+%  \minimize{x \in \R^n} \ c^T x + \half \|Ax - d\|^2 \quad
+%  \st\ Bx = b, \ x \geq 0.
+%\end{equation}
+%%%
+%An interior-point method applied directly to \eqref{eq:lsq5} might encounter several difficulties. We remove the difficulties in  different ways and  obtain  two
+%slightly different implementations. 
+%
+%%  LIMITATIONS
+%%
+\subsection{Limitations of the Proposed Solution and Future Improvements}
+%\label{sec:Limitations}
+Other future improvements include the solution of \textit{constrained nonlinear least-squares }problems.
+
+% \subsection{Nonlinear Least-Squares with Linear Constraints}
+%In this section, we consider a regularization technique for  nonlinear least-squares problems with linear constraints. Nonlinear least-square problems  can be written as:
+%\begin{equation}
+% \label{nlsq}
+%  \min_{x \in \mathbb{R}^n} \ \tfrac{1}{2} \sum_{i=1}^m f_i(x)^2 \quad
+%  \text{subject to} \ Ax=b, \ x \geq 0,
+%\end{equation}
+%where each  function $f_i : \mathbb{R}^n \to \mathbb{R}$ is twice  continuously  
+%differentiable. Numerical difficulties  can arise when  the matrix $A$ and/or  the  Jacobian  of   $F: \mathbb{R}^n \to \mathbb{R}^m$, $F(x) :=(f_1(x), \ldots, f_m(x))$ do not have  full row rank. 
+%We propose  a primal-dual  interior point method.
+%New challenges may occur if  at a solution $x^*$, some components are such
+%that $x_i^* = 0$ and $z_i^* = 0$, where $z^*$ is the vector of dual variables
+%associated with the non-negativity constraints  $x \geq 0$. We separate our methodology into 
+%numerical and theoretical considerations.
+%\subsection {Numerical Aspects}
+%The application of an interior-point method to (\ref{nlsq}) gives us the  perturbed optimality conditions 
+%\begin{equation}
+%  \label{kkt-mu}
+%  \begin{bmatrix}
+%    J(x)^T F(x) - A^T y - z \\
+%    A(x) - b \\
+%    Xz - \mu e
+%  \end{bmatrix}
+%  = 0, \qquad (x,z) > 0,
+%\end{equation}
+%where $\mu>0$ is the barrier parameter, $J(x)$ is the Jacobian of $F(x)$, $y$ is  the vector of  Lagrange multipliers  associated with the equality constraints,  and $X =\mathrm{diag}(x)$. The calculation of  the Newton step
+%$(\Delta x, \Delta y, \Delta z)$ for (\ref{kkt-mu}) requires solving  the linear system
+%\begin{equation}
+%  \label{newton}
+%  \begin{bmatrix}
+%    H(x) & A^T & -I \\
+%    A & 0 & 0 \\
+%    Z & 0 & X
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \phantom{-}\Delta x \\ -\Delta y \\ \phantom{-}\Delta z
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) - A^T y - z \\
+%    A(x) - b \\
+%    Xz - \mu e
+%  \end{bmatrix},
+%\end{equation}
+%where $H(x) = J(x)^T J(x) + \sum_{i=1}^m f_i(x) \nabla^2 f_i(x)$ is the Hessian
+%of the Lagrangian of (\ref{nlsq}).
+%After elimination of $\Delta z$, we need to solve the following  symmetric system 
+%\begin{equation}
+%  \label{newton-reduced}
+%  \begin{bmatrix}
+%    H(x) + X^{-1} Z & A^T \\
+%    A & 0
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \phantom{-}\Delta x \\ -\Delta y
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) - A^T y - \mu X^{-1} e \\
+%    Ax - b
+%  \end{bmatrix},
+%\end{equation}
+%and recover $\Delta z$ by  $\Delta z = - z + \mu X^{-1} e - X^{-1} Z \Delta x$.
+%A disadvantage of this system is that the term $J(x)^T J(x)$, hidden in $H(x)$,
+%can be relatively dense. To avoid this difficulty, we propose defining the auxiliary variables
+%$\xi := J(x) \Delta x$, and we need to solve the following larger but sparse system
+%
+%\begin{equation}
+%  \label{newton-aux}
+%  \begin{bmatrix}
+%    B(x) + X^{-1} Z & A^T & J(x)^T \\
+%    A & 0 & 0 \\
+%    J(x) & 0 & -I
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \phantom{-}\Delta x \\ -\Delta y \\ \xi
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) - A^T y - \mu X^{-1} e \\
+%    Ax - b \\
+%    0
+%  \end{bmatrix},
+%\end{equation}
+%where $B(x)$ represents $\sum\limits_{i=1}^m f_i(x) \nabla^2 f_i(x)$
+%or  a symmetric to it. A second advantage of the above  approach
+%is that the system (\ref {newton-aux}) is always invertible if  $ A $ is full rank, even if $ J (x) $ is not  full rank. We propose 
+%solving \ref{newton-aux} via a \textit{regularization} of this system, which is in the very simple form
+%
+%\begin{equation}
+%  \label{newton-to-reg}
+%  \begin{bmatrix}
+%    B(x) + X^{-1} Z + \rho I & A^T & J(x)^T \\
+%    A & -\delta I & 0 \\
+%    J(x) & 0 & -I
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \phantom{-}\Delta x \\ -\Delta y \\ \xi
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) - A^T y - \mu X^{-1} e \\
+%    Ax - b \\
+%    0
+%  \end{bmatrix},
+%\end{equation}
+%where  $\rho > 0$ and $\delta > 0$ are  regularization parameters.
+%They affect only the coefficient matrix of the system and not the right hand side. These parameters  make  the system (\ref{newton-to-reg}) invertible independent of $A$ and $J(x)$.
+%The role of the parameter $ \delta $ is to regularize the constraints that may be (nearly) dependent, while the role of $ \rho $ is to regularize the $ (1,1) $  block in the case where some variables are not subject to a non negativity constraint and/or in the case of a linear least-squares problem  i.e., $ B (x) = 0 $.
+%
+%Under these conditions, it is natural to assume that for  sufficiently small values of $ \rho $ and $ \delta $, the solutions of (\ref{newton}) and (\ref{newton-to-reg}) are close and that we can find a solution of (\ref {nlsq}).
+%\subsection{Theoretical Aspects}
+%
+%We believe that the regularization (\ref {newton-to-reg}) is justified by a mixed  proximal point  and augmented  Lagrangian   applied to (\ref {nlsq}). Indeed, by applying the augmented  Lagrangian method  to (\ref{nlsq}) we get 
+%\[
+%  \min_{x} \
+%  \tfrac12 \sum_{i=1}^m f_i(x)^2 - y_k^T (Ax-b) +
+%  \tfrac{1}{2 \delta} \|Ax - b\|^2 \quad \text{subject to} \ x \geq 0,
+%\]
+%which can also be written as:
+%\[
+%  \min_{x,r} \
+%  \tfrac12 \sum_{i=1}^m f_i(x)^2 + \tfrac12 \delta \|r + y_k\|^2
+%  \quad \text{subject to} \ Ax + \delta r = 0, \ x \geq 0.
+%\]
+%We propose adding a  proximal type term  to this sub-problem in
+%the spirit of \cite{friedlander-orban-2012} :
+%\begin{equation}
+%  \label{lsq-reg}
+%  \min_{x,r} \
+%  \tfrac12 \sum_{i=1}^m f_i(x)^2 + \tfrac12 \delta \|r + y_k\|^2
+%  + \tfrac12 \rho \|x - x_k\|^2
+%  \quad \text{subject to} \ Ax + \delta r = 0, \ x \geq 0.
+%\end{equation}
+%
+%Applying Newton's method to the Lagrangian of  (\ref {lsq-reg}) as before, we obtain the Newton system
+%
+%\[
+%  \begin{bmatrix}
+%    H(x) + \rho I & 0 & -A^T & -I \\
+%    0 & \delta I & -\delta I & 0 \\
+%    A & \delta I & 0 & 0 \\
+%    Z & 0 & 0 & X
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \Delta x \\ \Delta r \\ \Delta y \\ \Delta z
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) + \rho (x - x_k) - A^T y - z \\
+%    \delta (r + y_k) - \delta y \\
+%    Ax + \delta r - b \\
+%    Xz - \mu e
+%  \end{bmatrix}.
+%\]
+%Eliminating $ \Delta r $, we find the system
+%
+%\begin{equation}
+%  \label{sys3}
+%  \begin{bmatrix}
+%    H(x) + \rho I & A^T & -I \\
+%    A & -\delta I & 0 \\
+%    Z & 0 & X
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \phantom{-}\Delta x \\ -\Delta y \\ \phantom{-}\Delta z
+%  \end{bmatrix}
+%  = -
+%  \begin{bmatrix}
+%    J(x)^T F(x) + \rho (x - x_k) - A^T y - z \\
+%    Ax + \delta (y - y_k) - b \\
+%    Xz - \mu e
+%  \end{bmatrix}.
+%\end{equation}
+%Rather than using \ref{sys3} directly, we propose the following symmetrization, obtained via the similarity transformation defined by the diagonal matrix blkdiag($I,I,I,Z^{-\shalf}$)
+%\begin{equation}
+%  \label{sys4}
+%  \begin{bmatrix}
+%    B       & A^T & J(x)^T      & Z^{\shalf} \\
+%     A             & -\delta I   &          &               \\
+%     J(x)             &     & -I &               \\
+%     -Z^{\shalf} &     &          &  -X
+%  \end{bmatrix}
+%  \begin{bmatrix}
+%    \Delta x \\ \Delta r \\ \Delta y \\ Z_k^{-\shalf} \Delta z
+%  \end{bmatrix}
+%  =
+%  \begin{bmatrix}
+%    c - B^T y_k - A^T \lambda_k - z_k \\
+%    d - A x_k - r_k \\
+%    b - B x_k \\
+%    \tau_k Z_k^{-\shalf} e - X_k Z_k^{\shalf} e
+%  \end{bmatrix},
+%\end{equation}
+%the advantages of \ref{sys4} is that the linear systems used in the definition of the Newton steps are larger, sparser and tailored to the special structure of \ref{lsq-reg}.
