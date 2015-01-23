@@ -912,7 +912,7 @@ or \eqref{eq:lsq-dual} is infeasible.
 
 \subsection{Implementation}
 
-Our implementation is strongly based on that of \cite{friedlander-orban-2012}
+Our first  implementation is strongly based on that of \cite{friedlander-orban-2012}
 with the difference that a step $\Delta v$ is computed using
 \eqref{eq:newton-sym} instead of a partial reduction of this system. The
 implementation accepts problems with free variables in so-called \textit{slack
@@ -1079,7 +1079,24 @@ All other initializations and updates are as described by
 initialized to the value $1$ and divided by $10$ at each iteration but are not
 allowed to decrease below $10^{-8}$. The method is implemented in the Python
 language as part of the \textsf{NLPy} library \citep{orban-2012}.
+The second implementation would be more robust if the slack form left the original bounds as they are. That mean:
+\begin{equation}
+  \label{eq:lb}
+  \minimize{x \in \R^n} \ \half \|Ax - d\|_2^2 ,
+  \quad
+  \st \ L \leq Bx \leq U,l \leq x \leq u,
+\end{equation}
+will be transformed to
 
+\begin{equation}
+  \label{eq:lbt}
+  \minimize{x \in \R^n} \ \half \|Ax - d\|_2^2 ,
+  \quad
+  \st \ Bx-s-L=0, s \geq 0, U- Bx-t=0, t \geq 0,l \leq x \leq u,
+\end{equation}
+Every thing is the same as first implementation except change a little bit in KKT system.
+The barrier terms should then have the form
+	\[-\mu \log(s) - \mu\log(t) - \mu \log(x-l) - \mu \log(u-x).\]
 \subsection{Numerical Results}
 
 We illustrate the performance of our approach on instances of the
@@ -1288,26 +1305,10 @@ Finally, the generalization of our approach to nonlinear least-squares
 problems with linear constraints is the subject of current investigation.
 \subsection{Numerical Aspects}
 
-We consider problem (\ref{eq:l1reg}) which can be reformulated as convex quadratic programs, and then solved by an interior-point method for example the regularization of \eqref{eq:lsq} proposed by
-\cite{friedlander-orban-2012}. Our method is implemented in the Python
-language as part of the \textsf{NLPy} library \citep{orban-2012}. We illustrate the performance of our approach against PDCO and $\ell_1-\ell_s$  on sparse single recovery problems generated randomly following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}. 
+ We illustrate the performance of our approach against PDCO and $\ell_1-\ell_s$  on sparse single recovery problems generated randomly following the procedure given by \cite{kim-koh-lustig-boyd-gorinevsky-2007}. 
 The parameters that we choose in (\ref{eq:l1reg}) are different. For $A$ we apply the Pseudorandom Number Generator PRNG with $m=2^t$ and $n=2^{t+2}$ and the other kind of choosing parameter $A$ is the Discrete Cosine Transform DCT problem with $m=2^t$ and $n=2^{t+2}$. We take the parameter $d$ as random vector. The regularization parameter  was taken as $\lambda =1e-4$ in (\ref{eq:l1reg}).
 All large-scale  problems,  scaled form  achieves significantly better performance in terms of   number of iterations, cost, KKT residual, run time, and number of iteration in lsmr   while applying LSMR to the Newton system in LSQ and PDCO. We consider  PCG iteration for $\ell_1-\ell_s$.
 
- \section{Generation of Test Problems}
-We generate  data for the following least-squares problem
-\begin{equation}
-\label{eq:first-class}
-\underset{x} {\text{minimize}}       \quad     \half\|Ax-b\|^2 
-\end{equation}
-where:%\refp{eq:first-class} can be easily converted  to  (\ref{eq:lsqt}).\\
-\begin{equation}
-\label{eq:first}
-\begin{aligned}
-&A= \text{the Pseudorandom Number Generator PRNG with $m=2^t$ and $n=2^{t+2}$}\\ 
-&d=(d_j),\quad q_{j}\in(-1,1) \text{ randomly chosen}, j=1,\cdots,n.\\
-  \end{aligned}
-\end{equation}
 \include{SubFiles/NumericalResults}
 \include{SubFiles/Conclusion}
 
